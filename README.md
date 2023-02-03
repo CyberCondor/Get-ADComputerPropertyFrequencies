@@ -1,6 +1,6 @@
 # Get-ADComputerPropertyFrequencies.ps1
 ### SYNOPSIS
-Analyze Active Directory computers by frequency of assigned properties.<br>
+Analyze Active Directory computers by frequency of assigned properties. 
 To answer questions like: *e.g., how many computers are enabled in this AD and what is the most common OS between them? When were the majority of them they last logged into?*<br>
 Find out how many AD computers are assigned a specific property like "LastLogonDate" or "OperatingSystem".<br>
 Find out how many unique property assignments exist for a specific property.<br>
@@ -12,8 +12,6 @@ Analyze Active Directory computers by frequency of assigned properties.
 Mandatory. Specifies the Active Directory server domain to query.
 ### EXAMPLE
  ```Get-ADComputerPropertyFrequencies.ps1 -Server CyberCondor.local```
- 
-###### Note: The Active Directory object properties queried are pre-defined and static. The list of properties queried and listed is held in one variable and can be easily changed to query different properties.
 
 # Main Object
 ```Get-ADComputer -Server $Server -Filter * -Properties $ADComputerProperties | Select $ADComputerProperties```
@@ -37,7 +35,7 @@ For each value in the object:
 - Search through all unique values found in the object
 	- If the value of the current object is equal to the current unique value, then add to Count
 
-Return the new object that contains unique values and a count for occurring frequency of those values found in the original object
+Return the new object that contains unique values, a count, and occurring frequency of those values found in the original object
 
 ### Code
 
@@ -54,35 +52,46 @@ function Get-PropertyFrequencies($Property, $Object){
                 $isDate = $true
             }
         }
-        $PropertyFrequencies += New-Object -TypeName PSobject -Property @{$Property=$($UniqueValue.$Property);Count=0} # Copy Uniques to Object Array and Init Count as 0
+        $PropertyFrequencies += New-Object -TypeName PSobject -Property @{$Property=$($UniqueValue.$Property);Count=0;OccurringFrequency="100%"} # Copy Uniques to Object Array and Init Count as 0
     }
-    if($isDate -eq $true){
+    if(($isDate -eq $true) -and (($Object | Select $Property | Get-Member).Definition -like "*datetime*")){
         foreach($PropertyFrequency in $PropertyFrequencies){
             if(($PropertyFrequency.$Property) -and ([string]$PropertyFrequency.$Property -as [DateTime])){
                 try{$PropertyFrequency.$Property = $PropertyFrequency.$Property.ToString("yyyy-MM")
                 }
-                catch{# Catch Nothing
+                catch{# Nothing
                 }
             }
         }
-        foreach($PropertyName in $Object){
-            if(($PropertyName.$Property) -and ([string]$PropertyName.$Property -as [DateTime])){
-                try{$PropertyName.$Property = $PropertyName.$Property.ToString("yyyy-MM")
-                }
-                catch{# Catch Nothing
+        foreach($PropertyName in $Object.$Property){                                                            # For each value in Object
+            if($Total -gt 0){Write-Progress -id 1 -Activity "Finding $Property Frequencies -> ( $([int]$ProgressCount) / $Total )" -Status "$(($ProgressCount++/$Total).ToString("P")) Complete"}
+            foreach($PropertyFrequency in $PropertyFrequencies){                                                # Search through all existing Property values
+                if(($PropertyName -eq $null) -and ($PropertyFrequency -eq $null)){$PropertyFrequency.Count++}   # If Property value is NULL, then add to count - still want to track this
+                elseif($PropertyName -ceq $PropertyFrequency.$Property){$PropertyFrequency.Count++}             # Else If Property value is current value, then add to count
+                else{
+                    try{if($PropertyName.ToString("yyyy-MM") -ceq $PropertyFrequency.$Property){$PropertyFrequency.Count++}
+                    }
+                    catch{# Nothing
+                    }
                 }
             }
         }
     }
-    foreach($PropertyName in $Object.$Property){                                                            # For each value in Object
-        if($Total -gt 0){Write-Progress -id 1 -Activity "Finding $Property Frequencies -> ( $([int]$ProgressCount) / $Total )" -Status "$(($ProgressCount++/$Total).ToString("P")) Complete"}
-        foreach($PropertyFrequency in $PropertyFrequencies){                                                # Search through all existing Property values
-            if(($PropertyName -eq $null) -and ($PropertyFrequency -eq $null)){$PropertyFrequency.Count++}   # If Property value is NULL, then add to count - still want to track this
-            elseif($PropertyName -ceq $PropertyFrequency.$Property){$PropertyFrequency.Count++}             # Else If Property value is current value, then add to count
+    else{
+        foreach($PropertyName in $Object.$Property){                                                            # For each value in Object
+            if($Total -gt 0){Write-Progress -id 1 -Activity "Finding $Property Frequencies -> ( $([int]$ProgressCount) / $Total )" -Status "$(($ProgressCount++/$Total).ToString("P")) Complete"}
+            foreach($PropertyFrequency in $PropertyFrequencies){                                                # Search through all existing Property values
+                if(($PropertyName -eq $null) -and ($PropertyFrequency -eq $null)){$PropertyFrequency.Count++}   # If Property value is NULL, then add to count - still want to track this
+                elseif($PropertyName -ceq $PropertyFrequency.$Property){$PropertyFrequency.Count++}             # Else If Property value is current value, then add to count
+            }
         }
     }
     Write-Progress -id 1 -Completed -Activity "Complete"
-    
+    if($Total -gt 0){
+        foreach($PropertyFrequency in $PropertyFrequencies){
+            $PropertyFrequency.OccurringFrequency = ($PropertyFrequency.Count/$Total).ToString("P")
+        }
+    }
     return $PropertyFrequencies
 }
 ```
